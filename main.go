@@ -24,7 +24,7 @@ func main() {
 	config := neuralNetConfig{
 		inputNeurons:  6, /*4*/
 		outputNeurons: 5, /*3*/
-		hiddenNeurons: 6, /*3*/
+		hiddenNeurons: 5, /*3*/
 		numEpochs:     5000,
 		learningRate:  0.3,
 	}
@@ -143,10 +143,10 @@ func (nn *neuralNet) backPropagate(inputs,
 		hiddenLayerInput := new(mat.Dense)
 		fmt.Println("inputs\n", mat.Formatted(inputs, mat.Squeeze()))
 		hiddenLayerInput.Mul(inputs, weightInputHidden)
-		// addBiasInputHidden := func(_, col int, v float64) float64 {
-		// 	return v + biasInputHidden.At(0, col)
-		// }
-		// hiddenLayerInput.Apply(addBiasInputHidden, hiddenLayerInput)
+		addBiasInputHidden := func(_, col int, v float64) float64 {
+			return v + biasInputHidden.At(0, col)
+		}
+		hiddenLayerInput.Apply(addBiasInputHidden, hiddenLayerInput)
 		// Aplicação da sigmoid
 		InputHiddenLayerActivation := new(mat.Dense)
 		applySigmoid := func(_, _ int, v float64) float64 {
@@ -157,11 +157,20 @@ func (nn *neuralNet) backPropagate(inputs,
 		// hidden -> output
 		outputLayerInput := new(mat.Dense)
 		outputLayerInput.Mul(InputHiddenLayerActivation, weightHiddenOut)
-		// addBiasHiddenOut := func(_, col int, v float64) float64 {
-		// 	return v + biasHiddenOut.At(0, col)
-		// }
-		// outputLayerInput.Apply(addBiasHiddenOut, outputLayerInput)
+		addBiasHiddenOut := func(_, col int, v float64) float64 {
+			return v + biasHiddenOut.At(0, col)
+		}
+		outputLayerInput.Apply(addBiasHiddenOut, outputLayerInput)
 		output.Apply(applySigmoid, outputLayerInput)
+
+		// Backpropagation
+		fmt.Println(labels.Dims())
+		fmt.Println("labels:\n", mat.Formatted(labels, mat.Squeeze()))
+		fmt.Println(output.Dims())
+		fmt.Println("output:\n", mat.Formatted(output, mat.Squeeze()))
+		networkError := new(mat.Dense)
+		networkError.Sub(labels, output)
+		// fmt.Println("Error:\n", mat.Formatted(networkError, mat.Squeeze()))
 	}
 	fmt.Println(output.Dims())
 	fmt.Println("output\n", mat.Formatted(output, mat.Squeeze()))
