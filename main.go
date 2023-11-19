@@ -11,74 +11,30 @@ import (
 	"strconv"
 	"time"
 
-	"gonum.org/v1/gonum/floats"
 	"gonum.org/v1/gonum/mat"
 )
 
 func main() {
 
 	// Formaliza a matriz de treinamento
-	inputs, labels := makeInputsAndLabels("train.csv")
+	// inputs, labels := makeInputsAndLabels("train.csv")
+	inputs, labels := makeInputsAndLabels("treinamento.csv")
 
 	// Define a arquitetura da nede neural
 	config := neuralNetConfig{
-		inputNeurons:  4,
-		outputNeurons: 3,
-		hiddenNeurons: 3,
+		inputNeurons:  6, /*4*/
+		outputNeurons: 5, /*3*/
+		hiddenNeurons: 6, /*3*/
 		numEpochs:     5000,
 		learningRate:  0.3,
 	}
 
-	// Treina a rede neural
+	// Cria e  treina a rede neural
 	network := createNeuralNetwork(config)
 	if err := network.train(inputs, labels); err != nil {
 		log.Fatal(err)
 	}
 
-	// Mostra as informações sobre a network após o treinamento
-	ShowModelInfo(network)
-
-	// Formaliza a matriz de teste
-	testInputs, testLabels := makeInputsAndLabels("test.csv")
-
-	// Realiza as predições usando o modelo treinado (network)
-	predictions, err := network.predict(testInputs)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Mostra as informações sobre a network após a predição
-	ShowPredictedInfo(network, predictions)
-
-	// Printa a matriz de confusão
-	PrintConfusionMatrix(predictions, testLabels)
-
-	// Cálculo da acurácia do modelo
-	var truePosNeg int
-	numPreds, _ := predictions.Dims()
-	for i := 0; i < numPreds; i++ {
-
-		// Camada
-		labelRow := mat.Row(nil, i, testLabels)
-		var prediction int
-		for idx, label := range labelRow {
-			if label == 1.0 {
-				prediction = idx
-				break
-			}
-		}
-
-		// Acumula os verdadeiro positivo/negativo
-		if predictions.At(i, prediction) == floats.Max(mat.Row(nil, i, predictions)) {
-			truePosNeg++
-		}
-	}
-
-	// Cáluclo da acurácia
-	accuracy := float64(truePosNeg) / float64(numPreds)
-
-	// Mostra a acurácia
-	fmt.Printf("\nAccuracy = %0.2f\n\n", accuracy)
 }
 
 // Define a arquitetura e os parâmetros de aprendizado da Rede Neural
@@ -114,160 +70,103 @@ func sigmoidPrime(x float64) float64 {
 	return sigmoid(x) * (1.0 - sigmoid(x))
 }
 
-// Treina a rede neural usando backpropagation
+// Treina a rede neural
 func (nn *neuralNet) train(inputs, labels *mat.Dense) error {
 
+	rand.Seed(time.Now().UnixNano())
+
 	// Inicializa os pesos e bias
-	randSource := rand.NewSource(time.Now().UnixNano())
-	randGem := rand.New(randSource)
+	weightInputHidden := mat.NewDense(nn.config.inputNeurons, nn.config.hiddenNeurons, nil)
+	biasInputHidden := mat.NewDense(1, nn.config.hiddenNeurons, nil)
+	weightHiddenOut := mat.NewDense(nn.config.hiddenNeurons, nn.config.outputNeurons, nil)
+	biasHiddenOut := mat.NewDense(1, nn.config.outputNeurons, nil)
 
-	weightHidden := mat.NewDense(nn.config.inputNeurons, nn.config.hiddenNeurons, nil)
-	biasHidden := mat.NewDense(1, nn.config.hiddenNeurons, nil)
-	weightOut := mat.NewDense(nn.config.hiddenNeurons, nn.config.outputNeurons, nil)
-	biasOut := mat.NewDense(1, nn.config.outputNeurons, nil)
-
-	weightHiddenRaw := weightHidden.RawMatrix().Data
-	biasHiddenRaw := biasHidden.RawMatrix().Data
-	weightOutRaw := weightOut.RawMatrix().Data
-	biasOutRaw := biasOut.RawMatrix().Data
+	weightInputHiddenRaw := weightInputHidden.RawMatrix().Data
+	biasInputHiddenRaw := biasInputHidden.RawMatrix().Data
+	weightHiddenOutRaw := weightHiddenOut.RawMatrix().Data
+	biasHiddenOutRaw := biasHiddenOut.RawMatrix().Data
 
 	// Atribui valores aleatórios aos pesos e bias
 	for _, param := range [][]float64{
-		weightHiddenRaw,
-		biasHiddenRaw,
-		weightOutRaw,
-		biasOutRaw,
+		weightInputHiddenRaw,
+		biasInputHiddenRaw,
+		weightHiddenOutRaw,
+		biasHiddenOutRaw,
 	} {
 		for i := range param {
-			param[i] = randGem.Float64()
+			param[i] = rand.Float64()*0.0002 - 0.0001
 		}
 	}
+
+	fmt.Println("weightInputHidden\n", mat.Formatted(weightInputHidden, mat.Squeeze()))
+	fmt.Println("biasInputHidden\n", mat.Formatted(biasInputHidden, mat.Squeeze()))
+	fmt.Println("weightHiddenOut\n", mat.Formatted(weightHiddenOut, mat.Squeeze()))
+	fmt.Println("biasHiddenOut\n", mat.Formatted(biasHiddenOut, mat.Squeeze()))
 
 	// Saída da rede neural
 	output := new(mat.Dense)
 
 	// Usa o backpropagation para ajustar os pesos e bias
-	if err := nn.backPropagate(inputs, labels, weightHidden, biasHidden, weightOut, biasOut, output); err != nil {
+	if err := nn.backPropagate(
+		inputs,
+		labels,
+		weightInputHidden,
+		biasInputHidden,
+		weightHiddenOut,
+		biasHiddenOut,
+		output); err != nil {
 		return err
 	}
 
-	// Implementa os elementos dentro da rede neural
-	nn.weightHidden = weightHidden
-	nn.biasHidden = biasHidden
-	nn.weightOut = weightOut
-	nn.biasOut = biasOut
+	// // FIM DO TREINAMENTO: Implementa os elementos dentro da rede neural
+	// nn.weightHidden = weightHidden
+	// nn.biasHidden = biasHidden
+	// nn.weightOut = weightOut
+	// nn.biasOut = biasOut
 
 	return nil
 }
 
-func (nn *neuralNet) backPropagate(inputs, labels, weightHidden, biasHidden, weightOut, biasOut, output *mat.Dense) error {
+func (nn *neuralNet) backPropagate(inputs,
+	labels,
+	weightInputHidden,
+	biasInputHidden,
+	weightHiddenOut,
+	biasHiddenOut,
+	output *mat.Dense) error {
 
 	// Loop através do número de epochs utilizando backpropagation
 	for i := 0; i < nn.config.numEpochs; i++ {
 
-		// Completa o processo de feedforward
+		// FEEDFORWARD
+		// Input -> hidden
 		hiddenLayerInput := new(mat.Dense)
-		hiddenLayerInput.Mul(inputs, weightHidden)
-		addBiasHidden := func(_, col int, v float64) float64 {
-			return v + biasHidden.At(0, col)
-		}
-		// Aplica a função de "addBiasHidden" em cada elemento de "hiddenLayerInput"
-		// e aplicando o resultado no recebedor
-		hiddenLayerInput.Apply(addBiasHidden, hiddenLayerInput)
-
-		hiddenLayerActivations := new(mat.Dense)
+		fmt.Println("inputs\n", mat.Formatted(inputs, mat.Squeeze()))
+		hiddenLayerInput.Mul(inputs, weightInputHidden)
+		// addBiasInputHidden := func(_, col int, v float64) float64 {
+		// 	return v + biasInputHidden.At(0, col)
+		// }
+		// hiddenLayerInput.Apply(addBiasInputHidden, hiddenLayerInput)
+		// Aplicação da sigmoid
+		InputHiddenLayerActivation := new(mat.Dense)
 		applySigmoid := func(_, _ int, v float64) float64 {
 			return sigmoid(v)
 		}
-		// Aplica a função de "applySigmoid" em cada elemento de "hiddenLayerActivations"
-		// e aplicando o resultado no recebedor
-		hiddenLayerActivations.Apply(applySigmoid, hiddenLayerInput)
+		InputHiddenLayerActivation.Apply(applySigmoid, hiddenLayerInput)
 
+		// hidden -> output
 		outputLayerInput := new(mat.Dense)
-		outputLayerInput.Mul(hiddenLayerActivations, weightOut)
-		addBiasOut := func(_, col int, v float64) float64 {
-			return v + biasOut.At(0, col)
-		}
-		outputLayerInput.Apply(addBiasOut, outputLayerInput)
+		outputLayerInput.Mul(InputHiddenLayerActivation, weightHiddenOut)
+		// addBiasHiddenOut := func(_, col int, v float64) float64 {
+		// 	return v + biasHiddenOut.At(0, col)
+		// }
+		// outputLayerInput.Apply(addBiasHiddenOut, outputLayerInput)
 		output.Apply(applySigmoid, outputLayerInput)
-
-		// Completa a backpropagation.
-		networkError := new(mat.Dense)
-		networkError.Sub(labels, output)
-
-		slopeOutputLayer := new(mat.Dense)
-		applySigmoidPrime := func(_, _ int, v float64) float64 {
-			return sigmoidPrime(v)
-		}
-		slopeOutputLayer.Apply(applySigmoidPrime, output)
-		slopeHiddenLayer := new(mat.Dense)
-		slopeHiddenLayer.Apply(applySigmoidPrime, hiddenLayerActivations)
-		//
-		dOutput := new(mat.Dense)
-		dOutput.MulElem(networkError, slopeOutputLayer)
-		errorAtHiddenLayer := new(mat.Dense)
-		errorAtHiddenLayer.Mul(dOutput, weightOut.T())
-
-		dHiddenLayer := new(mat.Dense)
-		dHiddenLayer.MulElem(errorAtHiddenLayer, slopeHiddenLayer)
-
-		// Ajusta os parâmetros
-		weightOutAdj := new(mat.Dense)
-		weightOutAdj.Mul(hiddenLayerActivations.T(), dOutput)
-		weightOutAdj.Scale(nn.config.learningRate, weightOutAdj)
-		weightOut.Add(weightOut, weightOutAdj)
-
-		biasOutAdj, err := sumAlongAxis(0, dOutput)
-		if err != nil {
-			return err
-		}
-		biasOutAdj.Scale(nn.config.learningRate, biasOutAdj)
-		biasOut.Add(biasOut, biasOutAdj)
-
-		weightHiddenAdj := new(mat.Dense)
-		weightHiddenAdj.Mul(inputs.T(), dHiddenLayer)
-		weightHiddenAdj.Scale(nn.config.learningRate, weightHiddenAdj)
-		weightHidden.Add(weightHidden, weightHiddenAdj)
-
-		biasHiddenAdj, err := sumAlongAxis(0, dHiddenLayer)
-		if err != nil {
-			return err
-		}
-		biasHiddenAdj.Scale(nn.config.learningRate, biasHiddenAdj)
-		biasHidden.Add(biasHidden, biasHiddenAdj)
 	}
+	fmt.Println(output.Dims())
+	fmt.Println("output\n", mat.Formatted(output, mat.Squeeze()))
 
 	return nil
-}
-
-// sumAlongAxis soma uma matriz ao longo de uma dimensão específica,
-// preservando a outra dimensão.
-func sumAlongAxis(axis int, m *mat.Dense) (*mat.Dense, error) {
-
-	numRows, numCols := m.Dims()
-
-	var output *mat.Dense
-
-	switch axis {
-	case 0:
-		data := make([]float64, numCols)
-		for i := 0; i < numCols; i++ {
-			col := mat.Col(nil, i, m)
-			data[i] = floats.Sum(col)
-		}
-		output = mat.NewDense(1, numCols, data)
-	case 1:
-		data := make([]float64, numRows)
-		for i := 0; i < numRows; i++ {
-			row := mat.Row(nil, i, m)
-			data[i] = floats.Sum(row)
-		}
-		output = mat.NewDense(numRows, 1, data)
-	default:
-		return nil, errors.New("invalid axis, must be 0 or 1")
-	}
-
-	return output, nil
 }
 
 // Implementação do feed forward para previsão
@@ -286,7 +185,7 @@ func (nn *neuralNet) predict(x *mat.Dense) (*mat.Dense, error) {
 	// Defina a saída da rede neural.
 	output := new(mat.Dense)
 
-	// Complete o processo de feed forward.
+	// Completa o processo de feed forward.
 	hiddenLayerInput := new(mat.Dense)
 	hiddenLayerInput.Mul(x, nn.weightHidden)
 	addBHidden := func(_, col int, v float64) float64 { return v + nn.biasHidden.At(0, col) }
@@ -305,6 +204,7 @@ func (nn *neuralNet) predict(x *mat.Dense) (*mat.Dense, error) {
 	return output, nil
 }
 
+// Lê o CSV
 func makeInputsAndLabels(fileName string) (*mat.Dense, *mat.Dense) {
 	// Abra o arquivo do conjunto de dados.
 	f, err := os.Open(fileName)
@@ -326,86 +226,45 @@ func makeInputsAndLabels(fileName string) (*mat.Dense, *mat.Dense) {
 	// inputsData e labelsData irão conter todos os
 	// valores de ponto flutuante que eventualmente serão
 	// usados para formar matrizes.
-	inputsData := make([]float64, 4*len(rawCSVData))
-	labelsData := make([]float64, 3*len(rawCSVData))
+	inputsData := make([]float64, 6*len(rawCSVData))
+	labelsData := make([]float64, 1*len(rawCSVData))
 
 	// Irá rastrear o índice atual dos valores da matriz.
 	var inputsIndex int
 	var labelsIndex int
 
-	// Movimenta sequencialmente as linhas para uma fatia de valores de ponto flutuante.
+	// Move sequentially through the rows to a slice of floating-point values.
 	for idx, record := range rawCSVData {
 
-		// Pula a linha de cabeçalho.
+		// Skip the header row.
 		if idx == 0 {
 			continue
 		}
 
-		// Percorre as colunas de ponto flutuante.
+		// Iterate over the floating-point columns.
 		for i, val := range record {
 
-			// Convrte o valor para float
+			// Convert the value to float.
 			parsedVal, err := strconv.ParseFloat(val, 64)
 			if err != nil {
 				log.Fatal(err)
 			}
 
-			// Converta o valor para um ponto flutuante.
-			if i == 4 || i == 5 || i == 6 {
+			// Convert the value to a floating-point.
+			if i == 6 { // Assuming classe is the last column (index 6)
 				labelsData[labelsIndex] = parsedVal
 				labelsIndex++
 				continue
 			}
 
-			// Adicione ao dadosLabels se for relevante.
+			// Add to inputsData if relevant.
 			inputsData[inputsIndex] = parsedVal
 			inputsIndex++
 		}
 	}
-	inputs := mat.NewDense(len(rawCSVData), 4, inputsData)
-	labels := mat.NewDense(len(rawCSVData), 3, labelsData)
+	inputs := mat.NewDense(len(rawCSVData), 6, inputsData)
+	labels := mat.NewDense(len(rawCSVData), 1, labelsData)
 	return inputs, labels
-}
-
-// ConfusionMatrix calcula a matriz de confusão com base nas previsões do modelo e nos rótulos reais.
-func ConfusionMatrix(predictions, actualLabels *mat.Dense) (int, int, int, int) {
-	numSamples, _ := predictions.Dims()
-	VP, VN, FP, FN := 0, 0, 0, 0
-
-	for i := 0; i < numSamples; i++ {
-		predictedRow := mat.Row(nil, i, predictions)
-		actualRow := mat.Row(nil, i, actualLabels)
-
-		maxIndexPredicted := floats.MaxIdx(predictedRow)
-		maxIndexActual := floats.MaxIdx(actualRow)
-
-		if maxIndexPredicted == maxIndexActual {
-			if maxIndexActual == 1 { // Verdadeiro Positivo
-				VP++
-			} else { // Verdadeiro Negativo
-				VN++
-			}
-		} else {
-			if maxIndexPredicted == 1 { // Falso Positivo
-				FP++
-			} else { // Falso Negativo
-				FN++
-			}
-		}
-	}
-
-	return VP, VN, FP, FN
-}
-
-// PrintConfusionMatrix calcula e imprime a matriz de confusão com base nas previsões do modelo e nos rótulos reais.
-func PrintConfusionMatrix(predictions, actualLabels *mat.Dense) {
-	VP, VN, FP, FN := ConfusionMatrix(predictions, actualLabels)
-
-	fmt.Println("Matriz de Confusão:")
-	fmt.Printf("Verdadeiro Positivo (VP): %d\n", VP)
-	fmt.Printf("Verdadeiro Negativo (VN): %d\n", VN)
-	fmt.Printf("Falso Positivo (FP): %d\n", FP)
-	fmt.Printf("Falso Negativo (FN): %d\n", FN)
 }
 
 // Informações
@@ -430,7 +289,6 @@ func ShowModelInfo(network *neuralNet) {
 func ShowPredictedInfo(network *neuralNet, predictions *mat.Dense) {
 	colorReset := "\033[0m"
 	colorGreen := "\033[32m"
-	colorBlue := "\033[34m"
 
 	fmt.Println(string(colorGreen))
 	fmt.Println("Informações da Rede Neural APÓS O Predict():")
@@ -441,10 +299,6 @@ func ShowPredictedInfo(network *neuralNet, predictions *mat.Dense) {
 	ShowWeightsAndBiases(network.weightHidden, network.biasHidden)
 	fmt.Println("Pesos e Vieses da Camada de Saída:")
 	ShowWeightsAndBiases(network.weightOut, network.biasOut)
-
-	fmt.Println(string(colorBlue))
-	fmt.Println("Previsões do Modelo:")
-	ShowPredictions(predictions)
 	fmt.Println(string(colorReset))
 }
 
@@ -454,10 +308,4 @@ func ShowWeightsAndBiases(weights, biases *mat.Dense) {
 	fmt.Println(mat.Formatted(weights, mat.Squeeze()))
 	fmt.Println("Vieses:")
 	fmt.Println(mat.Formatted(biases, mat.Squeeze()))
-}
-
-// ShowPredictions exibe as previsões do modelo.
-func ShowPredictions(predictions *mat.Dense) {
-	fmt.Println("Previsões:")
-	fmt.Println(mat.Formatted(predictions, mat.Squeeze()))
 }
