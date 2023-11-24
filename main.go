@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"gonum.org/v1/gonum/floats"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -18,13 +19,16 @@ func main() {
 
 	// Formaliza a matriz de treinamento
 	// inputs, labels := makeInputsAndLabels("train.csv")
-	inputs, labels := makeInputsAndLabels("treinamento.csv")
+	inputs, labels := makeInputsAndLabels("treinamento_true.csv")
+	fmt.Println("labels\n", mat.Formatted(labels, mat.Squeeze()))
+	labels = formatLabel(labels)
+	fmt.Println("formatted Label\n", mat.Formatted(labels, mat.Squeeze()))
 
 	// Define a arquitetura da nede neural
 	config := neuralNetConfig{
-		inputNeurons:  6, /*4*/
-		outputNeurons: 5, /*3*/
-		hiddenNeurons: 5, /*3*/
+		inputNeurons:  6,  /*4*/
+		outputNeurons: 5,  /*3*/
+		hiddenNeurons: 10, /*3*/
 		numEpochs:     5000,
 		learningRate:  0.3,
 	}
@@ -35,6 +39,58 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Formaliza a matriz de teste
+	testInputs, testLabels := makeInputsAndLabels("teste_true.csv")
+	fmt.Println("testInputs\n", mat.Formatted(testInputs, mat.Squeeze()))
+	testLabels = formatLabel(testLabels)
+	fmt.Println("testLabels\n", mat.Formatted(testLabels, mat.Squeeze()))
+
+	// Realiza as predições usando o modelo treinado (network)
+	predictions, err := network.predict(testInputs)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("predictions\n", mat.Formatted(predictions, mat.Squeeze()))
+	binarizedPredictions := binarizePredictions(predictions)
+	fmt.Println("binarized Predictions\n", mat.Formatted(binarizedPredictions, mat.Squeeze()))
+
+}
+
+// Função para transformar as predições em uma matriz binária
+func binarizePredictions(predictions *mat.Dense) *mat.Dense {
+	rows, cols := predictions.Dims()
+	binarized := mat.NewDense(rows, cols, nil)
+
+	for i := 0; i < rows; i++ {
+		// Encontra o índice do maior elemento na linha
+		_, maxIdx := findMaxIndex(predictions.RowView(i))
+		for j := 0; j < cols; j++ {
+			// Define 1 no índice do maior elemento, 0 nos demais
+			if j == maxIdx {
+				binarized.Set(i, j, 1)
+			} else {
+				binarized.Set(i, j, 0)
+			}
+		}
+	}
+
+	return binarized
+}
+
+// Função para encontrar o índice do valor máximo em um vetor
+func findMaxIndex(v mat.Vector) (float64, int) {
+	maxIdx := 0
+	maxVal := v.AtVec(0)
+
+	for i := 1; i < v.Len(); i++ {
+		val := v.AtVec(i)
+		if val > maxVal {
+			maxVal = val
+			maxIdx = i
+		}
+	}
+
+	return maxVal, maxIdx
 }
 
 // Define a arquitetura e os parâmetros de aprendizado da Rede Neural
@@ -70,6 +126,25 @@ func sigmoidPrime(x float64) float64 {
 	return sigmoid(x) * (1.0 - sigmoid(x))
 }
 
+// Formata o label para 1,0,0,0,0 / 0,1,0,0,0 / ...
+func formatLabel(labels *mat.Dense) *mat.Dense {
+	rows, cols := labels.Dims()
+	labelsOutput := mat.NewDense(rows, cols*5, nil)
+
+	for i := 0; i < rows; i++ {
+		val := int(labels.At(i, 0)) - 1 // Ajuste para começar de 0
+		for j := 0; j < cols*5; j++ {
+			if j%5 == val {
+				labelsOutput.Set(i, j, 1)
+			} else {
+				labelsOutput.Set(i, j, 0)
+			}
+		}
+	}
+
+	return labelsOutput
+}
+
 // Treina a rede neural
 func (nn *neuralNet) train(inputs, labels *mat.Dense) error {
 
@@ -94,7 +169,7 @@ func (nn *neuralNet) train(inputs, labels *mat.Dense) error {
 		biasHiddenOutRaw,
 	} {
 		for i := range param {
-			param[i] = rand.Float64()*0.0002 - 0.0001
+			param[i] = rand.Float64()*2 - 1
 		}
 	}
 
@@ -118,11 +193,11 @@ func (nn *neuralNet) train(inputs, labels *mat.Dense) error {
 		return err
 	}
 
-	// // FIM DO TREINAMENTO: Implementa os elementos dentro da rede neural
-	// nn.weightHidden = weightHidden
-	// nn.biasHidden = biasHidden
-	// nn.weightOut = weightOut
-	// nn.biasOut = biasOut
+	// FIM DO TREINAMENTO: Implementa os elementos dentro da rede neural
+	nn.weightHidden = weightInputHidden
+	nn.biasHidden = biasInputHidden
+	nn.weightOut = weightHiddenOut
+	nn.biasOut = biasHiddenOut
 
 	return nil
 }
@@ -141,8 +216,10 @@ func (nn *neuralNet) backPropagate(inputs,
 		// FEEDFORWARD
 		// Input -> hidden
 		hiddenLayerInput := new(mat.Dense)
-		fmt.Println("inputs\n", mat.Formatted(inputs, mat.Squeeze()))
+		// fmt.Println("inputs\n", mat.Formatted(inputs, mat.Squeeze()))
+		// fmt.Println("weightInputHidden\n", mat.Formatted(weightInputHidden, mat.Squeeze()))
 		hiddenLayerInput.Mul(inputs, weightInputHidden)
+		// fmt.Println("hiddenLayerInput\n", mat.Formatted(hiddenLayerInput, mat.Squeeze()))
 		addBiasInputHidden := func(_, col int, v float64) float64 {
 			return v + biasInputHidden.At(0, col)
 		}
@@ -153,6 +230,7 @@ func (nn *neuralNet) backPropagate(inputs,
 			return sigmoid(v)
 		}
 		InputHiddenLayerActivation.Apply(applySigmoid, hiddenLayerInput)
+		// fmt.Println("InputHiddenLayerActivation\n", mat.Formatted(InputHiddenLayerActivation, mat.Squeeze()))
 
 		// hidden -> output
 		outputLayerInput := new(mat.Dense)
@@ -164,18 +242,90 @@ func (nn *neuralNet) backPropagate(inputs,
 		output.Apply(applySigmoid, outputLayerInput)
 
 		// Backpropagation
-		fmt.Println(labels.Dims())
-		fmt.Println("labels:\n", mat.Formatted(labels, mat.Squeeze()))
-		fmt.Println(output.Dims())
-		fmt.Println("output:\n", mat.Formatted(output, mat.Squeeze()))
+		// fmt.Println(labels.Dims())
+		// fmt.Println("labels:\n", mat.Formatted(labels, mat.Squeeze()))
+		// fmt.Println(output.Dims())
+		// fmt.Println("output:\n", mat.Formatted(output, mat.Squeeze()))
 		networkError := new(mat.Dense)
 		networkError.Sub(labels, output)
 		// fmt.Println("Error:\n", mat.Formatted(networkError, mat.Squeeze()))
+
+		slopeOutputLayer := new(mat.Dense)
+		applySigmoidPrime := func(_, _ int, v float64) float64 {
+			return sigmoidPrime(v)
+		}
+		slopeOutputLayer.Apply(applySigmoidPrime, output)
+		slopeHiddenLayer := new(mat.Dense)
+		slopeHiddenLayer.Apply(applySigmoidPrime, InputHiddenLayerActivation)
+		//
+		dOutput := new(mat.Dense)
+		dOutput.MulElem(networkError, slopeOutputLayer)
+		errorAtHiddenLayer := new(mat.Dense)
+		errorAtHiddenLayer.Mul(dOutput, weightHiddenOut.T())
+
+		dHiddenLayer := new(mat.Dense)
+		dHiddenLayer.MulElem(errorAtHiddenLayer, slopeHiddenLayer)
+
+		// Ajusta os parâmetros
+		weightOutAdj := new(mat.Dense)
+		weightOutAdj.Mul(InputHiddenLayerActivation.T(), dOutput)
+		weightOutAdj.Scale(nn.config.learningRate, weightOutAdj)
+		weightHiddenOut.Add(weightHiddenOut, weightOutAdj)
+
+		biasOutAdj, err := sumAlongAxis(0, dOutput)
+		if err != nil {
+			return err
+		}
+		biasOutAdj.Scale(nn.config.learningRate, biasOutAdj)
+		biasHiddenOut.Add(biasHiddenOut, biasOutAdj)
+
+		weightHiddenAdj := new(mat.Dense)
+		weightHiddenAdj.Mul(inputs.T(), dHiddenLayer)
+		weightHiddenAdj.Scale(nn.config.learningRate, weightHiddenAdj)
+		weightInputHidden.Add(weightInputHidden, weightHiddenAdj)
+
+		biasHiddenAdj, err := sumAlongAxis(0, dHiddenLayer)
+		if err != nil {
+			return err
+		}
+		biasHiddenAdj.Scale(nn.config.learningRate, biasHiddenAdj)
+		biasInputHidden.Add(biasInputHidden, biasHiddenAdj)
+
 	}
 	fmt.Println(output.Dims())
 	fmt.Println("output\n", mat.Formatted(output, mat.Squeeze()))
 
 	return nil
+}
+
+// sumAlongAxis soma uma matriz ao longo de uma dimensão específica,
+// preservando a outra dimensão.
+func sumAlongAxis(axis int, m *mat.Dense) (*mat.Dense, error) {
+
+	numRows, numCols := m.Dims()
+
+	var output *mat.Dense
+
+	switch axis {
+	case 0:
+		data := make([]float64, numCols)
+		for i := 0; i < numCols; i++ {
+			col := mat.Col(nil, i, m)
+			data[i] = floats.Sum(col)
+		}
+		output = mat.NewDense(1, numCols, data)
+	case 1:
+		data := make([]float64, numRows)
+		for i := 0; i < numRows; i++ {
+			row := mat.Row(nil, i, m)
+			data[i] = floats.Sum(row)
+		}
+		output = mat.NewDense(numRows, 1, data)
+	default:
+		return nil, errors.New("invalid axis, must be 0 or 1")
+	}
+
+	return output, nil
 }
 
 // Implementação do feed forward para previsão
